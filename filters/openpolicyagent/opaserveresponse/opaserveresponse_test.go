@@ -77,7 +77,7 @@ func TestServerResponseFilter(t *testing.T) {
 			regoQuery:       "envoy/authz/allow_object",
 			requestPath:     "/allow/structured/with-empty-query-string?",
 			expectedStatus:  http.StatusOK,
-			expectedBody:    "Welcome from policy!",
+			expectedBody:    "Welcome from policy with empty query string!",
 			expectedHeaders: map[string][]string{"X-Ext-Auth-Allow": {"yes"}},
 		},
 		{
@@ -87,7 +87,7 @@ func TestServerResponseFilter(t *testing.T) {
 			regoQuery:       "envoy/authz/allow_object",
 			requestPath:     "/allow/structured/with-query?pass=yes",
 			expectedStatus:  http.StatusOK,
-			expectedBody:    "Welcome from policy!",
+			expectedBody:    "Welcome from policy with query params!",
 			expectedHeaders: map[string][]string{"X-Ext-Auth-Allow": {"yes"}},
 		},
 		{
@@ -201,7 +201,7 @@ func TestServerResponseFilter(t *testing.T) {
 							response := {
 								"allowed": true,
 								"headers": {"x-ext-auth-allow": "yes"},
-								"body": "Welcome from policy!",
+								"body": "Welcome from policy with empty query string!",
 								"http_status": 200
 							}
 						}
@@ -212,7 +212,7 @@ func TestServerResponseFilter(t *testing.T) {
 							response := {
 								"allowed": true,
 								"headers": {"x-ext-auth-allow": "yes"},
-								"body": "Welcome from policy!",
+								"body": "Welcome from policy with query params!",
 								"http_status": 200
 							}
 						}
