@@ -75,6 +75,8 @@ type OpenPolicyAgentRegistry struct {
 	bodyReadBufferSize      int64
 
 	tracer opentracing.Tracer
+
+	astOptimization bool
 }
 
 type OpenPolicyAgentFilter interface {
@@ -123,6 +125,13 @@ func WithTracer(tracer opentracing.Tracer) func(*OpenPolicyAgentRegistry) error 
 	}
 }
 
+func WithASTOptimization(enable bool) func(*OpenPolicyAgentRegistry) error {
+	return func(cfg *OpenPolicyAgentRegistry) error {
+		cfg.astOptimization = enable
+		return nil
+	}
+}
+
 func NewOpenPolicyAgentRegistry(opts ...func(*OpenPolicyAgentRegistry) error) *OpenPolicyAgentRegistry {
 	registry := &OpenPolicyAgentRegistry{
 		reuseDuration:       defaultReuseDuration,
@@ -148,9 +157,10 @@ func NewOpenPolicyAgentRegistry(opts ...func(*OpenPolicyAgentRegistry) error) *O
 }
 
 type OpenPolicyAgentInstanceConfig struct {
-	envoyMetadata  *ext_authz_v3_core.Metadata
-	configTemplate []byte
-	startupTimeout time.Duration
+	envoyMetadata   *ext_authz_v3_core.Metadata
+	configTemplate  []byte
+	startupTimeout  time.Duration
+	astOptimization bool
 }
 
 func WithConfigTemplate(configTemplate []byte) func(*OpenPolicyAgentInstanceConfig) error {
@@ -347,7 +357,7 @@ func (registry *OpenPolicyAgentRegistry) newOpenPolicyAgentInstance(bundleName s
 		return nil, err
 	}
 
-	engine, err := registry.new(inmem.New(), configBytes, config, filterName, bundleName,
+	engine, err := registry.new(inmem.NewWithOpts(inmem.OptReturnASTValuesOnRead(true)), configBytes, config, filterName, bundleName,
 		registry.maxRequestBodyBytes, registry.bodyReadBufferSize)
 	if err != nil {
 		return nil, err

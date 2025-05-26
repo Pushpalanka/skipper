@@ -960,7 +960,8 @@ type Options struct {
 	OpenPolicyAgentRequestBodyBufferSize int64
 	OpenPolicyAgentMaxMemoryBodyParsing  int64
 
-	PassiveHealthCheck map[string]string
+	PassiveHealthCheck                   map[string]string
+	EnableOpenPolicyAgentOptimizationAST bool
 }
 
 func (o *Options) KubernetesDataClientOptions() kubernetes.Options {
@@ -1904,7 +1905,8 @@ func run(o Options, sig chan os.Signal, idleConnsCH chan struct{}) error {
 			openpolicyagent.WithMaxMemoryBodyParsing(o.OpenPolicyAgentMaxMemoryBodyParsing),
 			openpolicyagent.WithReadBodyBufferSize(o.OpenPolicyAgentRequestBodyBufferSize),
 			openpolicyagent.WithCleanInterval(o.OpenPolicyAgentCleanerInterval),
-			openpolicyagent.WithTracer(tracer))
+			openpolicyagent.WithTracer(tracer),
+			openpolicyagent.WithASTOptimization(o.EnableOpenPolicyAgentOptimizationAST))
 		defer opaRegistry.Close()
 
 		opts := make([]func(*openpolicyagent.OpenPolicyAgentInstanceConfig) error, 0)
