@@ -2,6 +2,7 @@ package proxytest
 
 import (
 	"crypto/tls"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -121,6 +122,44 @@ func (c Config) Create() *TestProxy {
 
 func (p *TestProxy) Client() *TestClient {
 	return &TestClient{p.server.Client()}
+}
+
+func (tp *TestProxy) UpdateRoutes(routes []*eskip.Route, deleted []string) error {
+	//tl := loggingtest.New()
+
+	if tp.dc == nil {
+		panic("no test data client available for route updates")
+	}
+	//tp.dc.WithLoadAllDelay(3 * time.Second)
+
+	tp.dc.Update(routes, deleted)
+	//if err := tl.WaitFor("route settings applied, id: 2", 6*time.Second); err != nil {
+	//	panic(err)
+	//}
+	//_, _, err := tp.dc.LoadUpdate()
+	u, d, err := tp.dc.LoadUpdate()
+
+	if len(routes) != len(u) {
+		return errors.New("route updates do not match")
+	}
+
+	if len(deleted) != len(d) {
+		return errors.New("route deletions do not match")
+	}
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+
+}
+
+func (p *TestProxy) GetRoutes() map[string]*eskip.Route {
+	if p.dc == nil {
+		return nil
+	}
+	return p.dc.GetRoutes()
 }
 
 func (p *TestProxy) Close() error {
