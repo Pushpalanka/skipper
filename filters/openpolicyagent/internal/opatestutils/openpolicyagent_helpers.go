@@ -7,8 +7,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync/atomic"
+	"testing"
 	"time"
 
 	opasdktest "github.com/open-policy-agent/opa/v1/sdk/test"
@@ -149,4 +151,116 @@ func StartMultiBundleProxyServer(servers []*ControllableBundleServer) *httptest.
 	}))
 
 	return proxy
+}
+
+// BundleNamesFrom extracts the map keys as a slice of bundle names.
+func BundleNamesFrom(bundleFiles map[string]string) []string {
+	names := make([]string, 0, len(bundleFiles))
+	for name := range bundleFiles {
+		names = append(names, name)
+	}
+	return names
+}
+
+// NewBundleServerFromFiles starts an httptest.Server that serves bundle tarballs from disk.
+// Each entry in bundleFiles maps a bundle name to the file path on disk.
+// Requests to /bundles/<name> are answered with the file contents; /logs returns 200.
+func NewBundleServerFromFiles(tb testing.TB, bundleFiles map[string]string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for bundleName, bundlePath := range bundleFiles {
+			if r.URL.Path == "/bundles/"+bundleName {
+				data, err := os.ReadFile(bundlePath)
+				if err != nil {
+					tb.Fatalf("failed to read bundle file %q: %v", bundlePath, err)
+				}
+				w.Header().Set("Content-Type", "application/gzip")
+				w.Header().Set("Content-Disposition", "attachment; filename="+bundleName)
+				if _, err := w.Write(data); err != nil {
+					w.WriteHeader(http.StatusInternalServerError)
+				}
+				return
+			}
+		}
+		if r.URL.Path == "/logs" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+}
+
+// BundleConfig holds the parameters for GenerateBundleConfig.
+type BundleConfig struct {
+	BundleNames         []string
+	OpaControlPlaneURL  string
+	DecisionConsumerURL string
+	DecisionPath        string
+	DecisionLogging     bool
+	// BundlePolling overrides the polling interval for specific bundles by name.
+	// Bundles not listed here use the default (min=600s, max=1200s).
+	BundlePolling map[string]BundlePollingConfig
+}
+
+// BundlePollingConfig holds per-bundle polling intervals.
+type BundlePollingConfig struct {
+	MinDelaySeconds int
+	MaxDelaySeconds int
+}
+
+// GenerateBundleConfig builds an OPA JSON config for N bundles, each served at /bundles/<name>.
+func GenerateBundleConfig(cfg BundleConfig) []byte {
+	bundleEntries := make([]string, 0, len(cfg.BundleNames))
+	for _, name := range cfg.BundleNames {
+		minDelay, maxDelay := 600, 1200
+		if p, ok := cfg.BundlePolling[name]; ok {
+			minDelay = p.MinDelaySeconds
+			maxDelay = p.MaxDelaySeconds
+		}
+		bundleEntries = append(bundleEntries, fmt.Sprintf(`
+			%q: {
+				"service": "bundle_svc",
+				"resource": "/bundles/%s",
+				"polling": {
+					"min_delay_seconds": %d,
+					"max_delay_seconds": %d
+				}
+			}`, name, name, minDelay, maxDelay))
+	}
+
+	var decisionPlugin string
+	if cfg.DecisionLogging {
+		decisionPlugin = `
+			"decision_logs": {
+				"console": false,
+				"service": "decision_svc",
+				"reporting": {
+					"min_delay_seconds": 300,
+					"max_delay_seconds": 600
+				}
+			},`
+	}
+
+	return []byte(fmt.Sprintf(`{
+		"services": {
+			"bundle_svc": {
+				"url": %q
+			},
+			"decision_svc": {
+				"url": %q
+			}
+		},
+		"bundles": {
+			%s
+		},
+		"labels": {
+			"environment": "test"
+		},
+		%s
+		"plugins": {
+			"envoy_ext_authz_grpc": {
+				"path": %q,
+				"dry-run": false
+			}
+		}
+	}`, cfg.OpaControlPlaneURL, cfg.DecisionConsumerURL, strings.Join(bundleEntries, ",\n"), decisionPlugin, cfg.DecisionPath))
 }
